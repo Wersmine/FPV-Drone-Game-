@@ -1,0 +1,339 @@
+-- ============================================
+-- FPV AUTO-FARM v31 by Webs_My
+-- Телепорт дрона в ноги каждый кадр
+-- ============================================
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local VirtualUser = game:GetService("VirtualUser")
+
+-- ============================================
+-- ОТДЕЛЬНАЯ КНОПКА "ТП К ЯЩИКУ"
+-- ============================================
+local BOX_POS = Vector3.new(1919, 66, -401)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FPV_TeleportBtn"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local TpButton = Instance.new("TextButton")
+TpButton.Size = UDim2.new(0, 140, 0, 50)
+TpButton.Position = UDim2.new(0, 20, 0.4, 0)
+TpButton.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
+TpButton.TextColor3 = Color3.new(1, 1, 1)
+TpButton.Text = "📍 ТП К ЯЩИКУ"
+TpButton.TextSize = 14
+TpButton.Font = Enum.Font.GothamBold
+TpButton.Draggable = true
+TpButton.Parent = ScreenGui
+Instance.new("UICorner", TpButton).CornerRadius = UDim.new(0, 10)
+local btnStroke = Instance.new("UIStroke", TpButton)
+btnStroke.Color = Color3.fromRGB(0, 255, 255)
+btnStroke.Thickness = 2
+
+TpButton.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char.HumanoidRootPart.CFrame = CFrame.new(BOX_POS)
+        TpButton.Text = "✅ ТП!"
+        task.wait(1)
+        TpButton.Text = "📍 ТП К ЯЩИКУ"
+    end
+end)
+
+-- ============================================
+-- ОСНОВНОЙ СКРИПТ
+-- ============================================
+local Window = Rayfield:CreateWindow({
+    Name = "FPV AutoFarm v31",
+    LoadingTitle = "Загрузка...",
+    LoadingSubtitle = "by Webs_My",
+    ConfigurationSaving = { Enabled = false }
+})
+
+local MainTab = Window:CreateTab("Main", 4483362458)
+
+-- НАСТРОЙКИ
+local autoFarmEnabled = false
+local killNPCs = true
+local killPlayers = true
+
+-- ============================================
+-- КЛИК
+-- ============================================
+local function click()
+    if mouse1click then pcall(mouse1click) end
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton1(Vector2.new(
+            workspace.CurrentCamera.ViewportSize.X / 2,
+            workspace.CurrentCamera.ViewportSize.Y / 2
+        ))
+    end)
+end
+
+local function spamClick(count, delay)
+    count = count or 8
+    delay = delay or 0.15
+    for i = 1, count do
+        click()
+        task.wait(delay)
+    end
+end
+
+-- ============================================
+-- "TO BATTLE!"
+-- ============================================
+local function clickToBattle()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return false end
+    for _, gui in pairs(playerGui:GetDescendants()) do
+        if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+            local text = (gui.Text or ""):lower()
+            if text:find("battle") or text:find("в бой") 
+               or text:find("играть") or text:find("play")
+               or text:find("continue") then
+                pcall(function() gui:Activate() end)
+                local pos = gui.AbsolutePosition
+                local size = gui.AbsoluteSize
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton1(Vector2.new(
+                        pos.X + size.X/2, pos.Y + size.Y/2
+                    ))
+                end)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+task.spawn(function()
+    while task.wait(1) do
+        if not autoFarmEnabled then continue end
+        local char = LocalPlayer.Character
+        local needBattle = false
+        if not char then
+            needBattle = true
+        else
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then
+                needBattle = true
+            end
+        end
+        if needBattle then clickToBattle() end
+    end
+end)
+
+-- ============================================
+-- ПОИСК ДРОНА
+-- ============================================
+local function getMyDrone()
+    return workspace:FindFirstChild(LocalPlayer.Name .. "_FPVDrone")
+end
+
+-- ============================================
+-- ПОИСК ЦЕЛЕЙ
+-- ============================================
+local function getClosestPlayer()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local myPos = hrp.Position
+    local closest, closestDist = nil, math.huge
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local part = plr.Character:FindFirstChild("HumanoidRootPart")
+                    or plr.Character:FindFirstChild("Head")
+                if part then
+                    local dist = (part.Position - myPos).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closest = plr.Character
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function getClosestNPC()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local myPos = hrp.Position
+    local closest, closestDist = nil, math.huge
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name:find("EnemyNPC") then
+            local hum = obj:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Head")
+                if part then
+                    local dist = (part.Position - myPos).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closest = obj
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function getClosestTarget()
+    if killPlayers then
+        local p = getClosestPlayer()
+        if p then return p end
+    end
+    if killNPCs then
+        local n = getClosestNPC()
+        if n then return n end
+    end
+    return nil
+end
+
+-- ============================================
+-- ТЕЛЕПОРТ ДРОНА В НОГИ КАЖДЫЙ КАДР
+-- ============================================
+RunService.Heartbeat:Connect(function()
+    if not autoFarmEnabled then return end
+    
+    local drone = getMyDrone()
+    if not drone then return end
+    
+    local target = getClosestTarget()
+    if not target then return end
+    
+    local hrp = target:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        hrp = target:FindFirstChild("Head") or target:FindFirstChildWhichIsA("BasePart")
+    end
+    if not hrp then return end
+    
+    -- Точка в ногах: HumanoidRootPart.Position - 2 стада
+    local feetPos = hrp.Position - Vector3.new(0, 2, 0)
+    
+    pcall(function()
+        drone:PivotTo(CFrame.new(feetPos))
+    end)
+end)
+
+-- ============================================
+-- АВТОФАРМ (взять дрон)
+-- ============================================
+local function autoFarmStep()
+    local char = LocalPlayer.Character
+    if not char then clickToBattle() return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then clickToBattle() return end
+    
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    hrp.CFrame = CFrame.new(BOX_POS)
+    task.wait(0.5)
+    
+    local cam = workspace.CurrentCamera
+    cam.CFrame = CFrame.new(BOX_POS + Vector3.new(0, 10, 0), BOX_POS)
+    task.wait(0.5)
+    
+    spamClick(8, 0.15)
+    task.wait(1)
+end
+
+task.spawn(function()
+    while task.wait(5) do
+        if autoFarmEnabled then autoFarmStep() end
+    end
+end)
+
+-- ============================================
+-- ИНТЕРФЕЙС
+-- ============================================
+MainTab:CreateSection("Автофарм")
+
+MainTab:CreateToggle({
+    Name = "🤖 ПОЛНЫЙ АВТОФАРМ",
+    CurrentValue = false,
+    Callback = function(s)
+        autoFarmEnabled = s
+        Rayfield:Notify({ Title = "AUTOFARM", Content = s and "Запущено!" or "Остановлено", Duration = 3 })
+    end
+})
+
+MainTab:CreateSection("Цели")
+
+MainTab:CreateToggle({
+    Name = "👤 Игроки (38 💰)",
+    CurrentValue = true,
+    Callback = function(s) killPlayers = s end
+})
+
+MainTab:CreateToggle({
+    Name = "🎯 NPC (18 💰)",
+    CurrentValue = true,
+    Callback = function(s) killNPCs = s end
+})
+
+MainTab:CreateSection("Ручное")
+
+MainTab:CreateButton({
+    Name = "🖱️ Тест клика",
+    Callback = function() spamClick(5, 0.2) end
+})
+
+MainTab:CreateButton({
+    Name = "📍 ТП к ящику",
+    Callback = function()
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.CFrame = CFrame.new(BOX_POS)
+        end
+    end
+})
+
+MainTab:CreateButton({
+    Name = "🎮 Нажать 'To battle!'",
+    Callback = function() clickToBattle() end
+})
+
+MainTab:CreateButton({
+    Name = "💀 Дрон в цель (1 раз)",
+    Callback = function()
+        local drone = getMyDrone()
+        local target = getClosestTarget()
+        if drone and target then
+            local hrp = target:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                pcall(function()
+                    drone:PivotTo(CFrame.new(hrp.Position - Vector3.new(0, 2, 0)))
+                end)
+                Rayfield:Notify({ Title = "OK", Content = "Дрон в ногах!", Duration = 2 })
+            end
+        end
+    end
+})
+
+MainTab:CreateSection("Кнопка на экране")
+
+MainTab:CreateToggle({
+    Name = "👁️ Показать кнопку 'ТП к ящику'",
+    CurrentValue = true,
+    Callback = function(s) TpButton.Visible = s end
+})
+
+Rayfield:Notify({
+    Title = "FPV AutoFarm v31 загружен",
+    Content = "Дрон телепортируется в ноги каждый кадр!",
+    Duration = 5
+})
